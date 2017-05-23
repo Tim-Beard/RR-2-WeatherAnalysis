@@ -6,4 +6,113 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+# Analysis of US NOAA Storm Data 1950 to 2011 - health and economic impacts
+
+## Synopsis
+In this report we analyse storm data from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage. It covers the period from 1950 to November 2011.
+
+The analysis aims to answer the following questions:  
+1. Across the United States, which types of events are most harmful with respect to population health  
+2. Across the United States, which types of events have the greatest economic consequences
+
+My findings show that tornados are the most damaging to human health over the period. Floods cause the most property damage, and drought causes the most crop damage. 
+
+## Data Processing
+Download the Storm data file and load into R.
+
+```{r, cache=TRUE, results = "hide"}
+
+library(dplyr)
+# Download the data and read it into R
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "StormData.bz2")
+StormData <- read.csv("StormData.bz2")
+
+# Set the date colums to Date obejcts
+StormData$BGN_DATE <- as.Date(StormData$BGN_DATE, format = "%m/%d/%Y")
+StormData$END_DATE <- as.Date(StormData$END_DATE, format = "%m/%d/%Y")
+```
+
+### Calculate the values for Q1.
+When looking at the effects on health, I consider the data on both fatalities and injuries.
+I sum the number of fatalities (FATALITIES) and injuries (INJURIES) across all years by event types (EVTYPE).
+
+
+```{r}
+library(dplyr)
+## Aggregate the data on fatalities and injuries
+fatal <- aggregate(FATALITIES ~ EVTYPE, StormData, sum)
+injure <- aggregate(INJURIES ~ EVTYPE, StormData, sum)
+harm <- inner_join(fatal, injure) %>% 
+    mutate(total = FATALITIES + INJURIES) %>% 
+    arrange(desc(total))
+
+```
+
+
+### Calculate the values for Q2
+When looking at the economic effects of weather, I consider both the property and crop damage data included in the data set. 
+First I scale the damage figures by the exponent as explained in
+https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf Section 2.7.
+The property and crop figures come from PROPDMG and CROPDMG.
+The exponents come from PROPDMGEXP and CROPDMGEXP.
+
+Next I sum the property and crop damage ficures across years by event type (EVTYPE)
+
+```{r}
+
+## Scale the damage figures by the exponent as explained in
+## https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
+## Section 2.7
+tmp <- toupper(StormData$PROPDMGEXP)
+PropertyDamage <- (tmp == "K") * StormData$PROPDMG * 1000
+PropertyDamage <- PropertyDamage + (tmp == "M") * StormData$PROPDMG * 10^6
+PropertyDamage <- PropertyDamage + (tmp == "B") * StormData$PROPDMG * 10^9
+
+tmp <- toupper(StormData$CROPDMGEXP)
+CropDamage <- (tmp == "K") * StormData$CROPDMG * 1000
+CropDamage <- CropDamage + (tmp == "M") * StormData$CROPDMG * 10^6
+CropDamage <- CropDamage + (tmp == "B") * StormData$CROPDMG * 10^9
+
+D <- select(StormData, EVTYPE)
+D <- cbind(D, PropertyDamage, CropDamage)
+
+TotalProperty <- aggregate(PropertyDamage ~ EVTYPE, D, sum)
+TotalCrop <- aggregate(CropDamage ~ EVTYPE, D, sum)
+Damage <- inner_join(TotalProperty, TotalCrop) %>% 
+    mutate(total =  PropertyDamage + CropDamage) %>% 
+    arrange(desc(total))
+```
+
+## Results
+
+### To answer Q1. Across the United States, which types of events are most harmful with respect to population health
+```{r}
+## Plot total impact (fatal + injuries), and overlay fatalities
+
+par(mar=c(7.6, 4.1, 4.1, 2.1))
+barplot(head(harm$total/1000,10), names.arg = head(harm$EVTYPE,10), las=2, cex.axis = 0.8, cex.names = 0.7, ylim = c(0,100))
+barplot(head(harm$FATALITIES/1000,10), add = TRUE, col = "red", las=2, axes=FALSE, ylim = c(0,100))
+title(main = "Top ten most harmful weather events in the US, 1950 to 2011",
+      ylab = "Number of people affected (thousands)")
+legend("topright", legend = c("Fatalities", "Injuries"), pch = 15, col=c("red", "grey"))
+
+
+```
+  
+The bar graph shpws the top ten causes of harm.
+We can see that Tornado is by far the biggest cause of harm to human life, both injuries and fatalities. 
+
+
+### To answer Q2. Across the United States, which types of events have the greatest economic consequences
+```{r}
+par(mar=c(7.6, 4.1, 4.1, 2.1))
+barplot(head(Damage$total/10^9,10), names.arg = head(Damage$EVTYPE,10), las=2, cex.axis = 0.8, cex.names = 0.7)
+barplot(head(Damage$CropDamage/10^9,10), add = TRUE, col = "orange", las=2, axes=FALSE)
+title(main = "Top ten most damaging weather events in the US, 1950 to 2011", ylab = "Cost of damage ($Billion)")
+legend("topright", legend = c("Crop damage", "Property damage"), pch = 15, col=c("orange", "grey"))
+```
+  
+The bar graph shows the top ten causes of damage, by cost of the damage.
+It is not clear if the data is inflation adjusted, so I assume not. Currently this analysis does not take this into account and the graph simply shows the total cost of damage across all years.  
+We can see that flooding has caused the most damage overall and the most property damage. However, drought has caused the most crop damage.  
 
