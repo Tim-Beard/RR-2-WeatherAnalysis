@@ -79,7 +79,7 @@ Before scaling, let's look at the distribution of exponents. Overwhelingly the v
 ## Let's look at the spread of exponents
 print("Distribution of exponents in property damage")
 tally(group_by(StormData, toupper(PROPDMGEXP)))
-print("Distribution of exponents in property damage")
+print("Distribution of exponents in crop damage")
 tally(group_by(StormData, toupper(CROPDMGEXP)))
 
 tmp <- exponent$value[match(unlist(toupper(StormData$PROPDMGEXP)), exponent$symbol)]
