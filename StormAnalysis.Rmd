@@ -54,8 +54,11 @@ harm <- inner_join(fatal, injure) %>%
 When looking at the economic effects of weather, I consider both the property and crop damage data included in the data set. 
 First I scale the damage figures by the exponent as explained in
 https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf Section 2.7.
+I've also assumed that a number in the expoonent column
 The property and crop figures come from PROPDMG and CROPDMG.
 The exponents come from PROPDMGEXP and CROPDMGEXP.
+I've assumed "H", "K", "M", "B" map to 10 to the power of 2, 3, 6 and 9 respectively
+I've also assumed that a number in the exponent column indicates 10 to the power of that number.
 
 Next I sum the property and crop damage figures across years by event type (EVTYPE)
 
@@ -69,6 +72,15 @@ Next I sum the property and crop damage figures across years by event type (EVTY
 exponent = NULL
 exponent$symbol = c("","-", "?", "+", "0", "1", "2", "3", "4", "5", "6", "7", "8", "B", "H", "K", "M")
 exponent$value = c(0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 6)
+```
+Before scaling, let's look at the distribution of exponents. Overwhelingly the values are listed as thousands of dollars. In practice only the "B", "M" and "K" values will have a noticeable effect on the most significant events.
+
+```{r}
+## Let's look at the spread of exponents
+print("Distribution of exponents in property damage")
+tally(group_by(StormData, toupper(PROPDMGEXP)))
+print("Distribution of exponents in property damage")
+tally(group_by(StormData, toupper(CROPDMGEXP)))
 
 tmp <- exponent$value[match(unlist(toupper(StormData$PROPDMGEXP)), exponent$symbol)]
 PropertyDamage <- StormData$PROPDMG * 10^tmp
@@ -103,7 +115,7 @@ D <- as.data.table(mutate(D, year = year(BGN_DATE))) # Extract year from date
 PropDamageByYear <- D[,.(cost=sum(PropertyDamage)/10^6), 
                       by = .(year, event = EVTYPE)][,.SD[which.max(cost)], 
                                                     by = year]
-
+ 
 ## using dplyr
 # PropDamageByYear <- D %>% group_by(year, EVTYPE) %>% 
 #     summarise(cost = sum(PropertyDamage)/10^6) %>% 
@@ -117,9 +129,8 @@ PropDamageByYear <- D[,.(cost=sum(PropertyDamage)/10^6),
 CropDamageByYear <- D[,.(cost=sum(CropDamage)/10^6), 
                       by = .(year, event = EVTYPE)][,.SD[which.max(cost)], 
                                                     by = year]
-
-PropDamageByYear
-CropDamageByYear
+## Remove years with no data
+CropDamageByYear[CropDamageByYear$cost == 0,]$event <- NA
 
 ```
 
@@ -156,3 +167,11 @@ The bar graph shows the top ten causes of damage, by cost of the damage.
 It is not clear if the data is inflation adjusted, so I assume not. Currently this analysis does not take this into account and the graph simply shows the total cost of damage across all years.  
 We can see that flooding has caused the most damage overall and the most property damage. However, drought has caused the most crop damage.  
 
+Let's also look at the events over the years
+```{r}
+print("Most significant property damage event type each year ($millions)")
+print(PropDamageByYear, digits=3)
+
+print("Most significant crop damage event type each year ($millions)")
+print(CropDamageByYear, digits=3)
+```
