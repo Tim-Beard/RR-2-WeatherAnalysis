@@ -39,6 +39,7 @@ I sum the number of fatalities (FATALITIES) and injuries (INJURIES) across all y
 
 ```{r}
 library(dplyr)
+library(lubridate)
 ## Aggregate the data on fatalities and injuries
 fatal <- aggregate(FATALITIES ~ EVTYPE, StormData, sum)
 injure <- aggregate(INJURIES ~ EVTYPE, StormData, sum)
@@ -56,24 +57,26 @@ https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf S
 The property and crop figures come from PROPDMG and CROPDMG.
 The exponents come from PROPDMGEXP and CROPDMGEXP.
 
-Next I sum the property and crop damage ficures across years by event type (EVTYPE)
+Next I sum the property and crop damage figures across years by event type (EVTYPE)
 
 ```{r}
 
 ## Scale the damage figures by the exponent as explained in
 ## https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
 ## Section 2.7
-tmp <- toupper(StormData$PROPDMGEXP)
-PropertyDamage <- (tmp == "K") * StormData$PROPDMG * 1000
-PropertyDamage <- PropertyDamage + (tmp == "M") * StormData$PROPDMG * 10^6
-PropertyDamage <- PropertyDamage + (tmp == "B") * StormData$PROPDMG * 10^9
 
-tmp <- toupper(StormData$CROPDMGEXP)
-CropDamage <- (tmp == "K") * StormData$CROPDMG * 1000
-CropDamage <- CropDamage + (tmp == "M") * StormData$CROPDMG * 10^6
-CropDamage <- CropDamage + (tmp == "B") * StormData$CROPDMG * 10^9
+## Create a lookup table for the damage exponents (as powers of 10)
+exponent = NULL
+exponent$symbol = c("","-", "?", "+", "0", "1", "2", "3", "4", "5", "6", "7", "8", "B", "H", "K", "M")
+exponent$value = c(0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 6)
 
-D <- select(StormData, EVTYPE)
+tmp <- exponent$value[match(unlist(toupper(StormData$PROPDMGEXP)), exponent$symbol)]
+PropertyDamage <- StormData$PROPDMG * 10^tmp
+
+tmp <- exponent$value[match(unlist(toupper(StormData$CROPDMGEXP)), exponent$symbol)]
+CropDamage <- StormData$CROPDMG * 10^tmp
+
+D <- select(StormData, BGN_DATE, EVTYPE)
 D <- cbind(D, PropertyDamage, CropDamage)
 
 TotalProperty <- aggregate(PropertyDamage ~ EVTYPE, D, sum)
@@ -81,6 +84,43 @@ TotalCrop <- aggregate(CropDamage ~ EVTYPE, D, sum)
 Damage <- inner_join(TotalProperty, TotalCrop) %>% 
     mutate(total =  PropertyDamage + CropDamage) %>% 
     arrange(desc(total))
+
+## Let's also look at damage by year
+library(data.table)
+
+D <- as.data.table(mutate(D, year = year(BGN_DATE))) # Extract year from date
+##PropDamageByYear <- aggregate(D$PropertyDamage, by=list(D$year, D$EVTYPE), sum)
+##names(PropDamageByYear) <- c("year", "event", "cost")
+##PropDamageByYear <- arrange(PropDamageByYear, year, desc(cost))
+
+## Add a rank column to find the most costly event each year
+##PropDamageByYear$rank <- ave(-PropDamageByYear$cost,PropDamageByYear$year, 
+##                             FUN=function(x) rank(x, ties.method = "min"))
+##PropDamageByYear <- PropDamageByYear[PropDamageByYear$rank == 1,]
+
+## Or do the whole thing Using data tables:
+
+PropDamageByYear <- D[,.(cost=sum(PropertyDamage)/10^6), 
+                      by = .(year, event = EVTYPE)][,.SD[which.max(cost)], 
+                                                    by = year]
+
+## using dplyr
+# PropDamageByYear <- D %>% group_by(year, EVTYPE) %>% 
+#     summarise(cost = sum(PropertyDamage)/10^6) %>% 
+#    filter(cost == max(cost))
+
+#CropDamageByYear <- aggregate(D$CropDamage, by=list(D$year, D$EVTYPE), sum)
+#names(CropDamageByYear) <- c("year", "event", "cost")
+#CropDamageByYear <- arrange(CropDamageByYear, year, desc(cost))
+
+
+CropDamageByYear <- D[,.(cost=sum(CropDamage)/10^6), 
+                      by = .(year, event = EVTYPE)][,.SD[which.max(cost)], 
+                                                    by = year]
+
+PropDamageByYear
+CropDamageByYear
+
 ```
 
 ## Results
